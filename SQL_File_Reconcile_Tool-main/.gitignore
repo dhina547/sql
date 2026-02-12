@@ -1,0 +1,64 @@
+# ===========================
+# Python
+# ===========================
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+*.egg
+venv/
+.venv/
+env/
+*.whl
+
+# ===========================
+# Node.js / Frontend
+# ===========================
+node_modules/
+frontend/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# ===========================
+# CRA Build Output (included for single-server deployment)
+# ===========================
+# frontend/build/ is NOT ignored — deliberately committed for org laptop deployment
+
+# ===========================
+# Cache & Temp Files
+# ===========================
+backend/temp_cache/
+*.parquet
+*.pkl
+*.pickle
+
+# ===========================
+# IDE / Editor
+# ===========================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ===========================
+# Environment & Secrets
+# ===========================
+.env.local
+.env.*.local
+# Note: frontend/.env is NOT ignored — it contains CRA build flags only (no secrets)
+
+# ===========================
+# OS Files
+# ===========================
+Desktop.ini
+ehthumbs.db
+
+# ===========================
+# Misc Lock Files (keep package-lock in frontend only)
+# ===========================
+backend/package-lock.json

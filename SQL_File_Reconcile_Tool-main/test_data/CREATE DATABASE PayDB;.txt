@@ -1,0 +1,125 @@
+CREATE DATABASE PayDB;
+CREATE DATABASE RiskDB;
+CREATE DATABASE ReconcileLab;
+CREATE DATABASE UserMaster;
+CREATE DATABASE AuthDB;
+
+✅ 1️⃣ PayDB – Transactions Table
+USE PayDB;
+GO
+
+IF OBJECT_ID('dbo.Transactions', 'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.Transactions (
+        TxnID INT PRIMARY KEY,
+        UserID INT,
+        Amount DECIMAL(10,2),
+        TxnDate DATE,
+        Status VARCHAR(20)
+    );
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM dbo.Transactions)
+INSERT INTO dbo.Transactions VALUES
+(101, 1, 500.00, '2026-02-01', 'SUCCESS'),
+(102, 2, 750.00, '2026-02-01', 'FAILED'),
+(103, 3, 1200.00, '2026-02-02', 'SUCCESS');
+GO
+
+✅ 2️⃣ RiskDB – Transactions (INTENTIONAL MISMATCH)
+USE RiskDB;
+GO
+
+IF OBJECT_ID('dbo.Transactions', 'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.Transactions (
+        TxnID INT PRIMARY KEY,
+        UserID INT,
+        Amount DECIMAL(10,2),
+        TxnDate DATE,
+        Status VARCHAR(20)
+    );
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM dbo.Transactions)
+INSERT INTO dbo.Transactions VALUES
+(101, 1, 500.00, '2026-02-01', 'SUCCESS'),
+(102, 2, 700.00, '2026-02-01', 'SUCCESS'), -- Amount + Status mismatch
+(104, 4, 300.00, '2026-02-03', 'SUCCESS'); -- Missing TxnID 103
+GO
+
+✅ 3️⃣ ReconcileLab – Transactions (MATCH WITH PayDB)
+USE ReconcileLab;
+GO
+
+IF OBJECT_ID('dbo.Transactions', 'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.Transactions (
+        TxnID INT PRIMARY KEY,
+        UserID INT,
+        Amount DECIMAL(10,2),
+        TxnDate DATE,
+        Status VARCHAR(20)
+    );
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM dbo.Transactions)
+INSERT INTO dbo.Transactions VALUES
+(101, 1, 500.00, '2026-02-01', 'SUCCESS'),
+(102, 2, 750.00, '2026-02-01', 'FAILED'),
+(103, 3, 1200.00, '2026-02-02', 'SUCCESS');
+GO
+
+✅ 4️⃣ UserMaster – Users Table
+USE UserMaster;
+GO
+
+IF OBJECT_ID('dbo.Users', 'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.Users (
+        UserID INT PRIMARY KEY,
+        UserName VARCHAR(50),
+        Email VARCHAR(100)
+    );
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM dbo.Users)
+INSERT INTO dbo.Users VALUES
+(1, 'Arjun', 'arjun@test.com'),
+(2, 'Meena', 'meena@test.com'),
+(3, 'Ravi', 'ravi@test.com');
+GO
+
+✅ 5️⃣ AuthDB – Users (INTENTIONAL MISMATCH)
+USE AuthDB;
+GO
+
+IF OBJECT_ID('dbo.Users', 'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.Users (
+        UserID INT PRIMARY KEY,
+        UserName VARCHAR(50),
+        Email VARCHAR(100)
+    );
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM dbo.Users)
+INSERT INTO dbo.Users VALUES
+(1, 'Arjun', 'arjun@test.com'),
+(2, 'Meena', 'meena_changed@test.com'), -- Email mismatch
+(4, 'Sita', 'sita@test.com');             -- Extra user
+GO
+
+🔍 6️⃣ VERIFICATION QUERIES (RUN AFTER INSERT)
+Check data in each DB
+SELECT * FROM PayDB.dbo.Transactions;
+SELECT * FROM RiskDB.dbo.Transactions;
+SELECT * FROM ReconcileLab.dbo.Transactions;
+
+SELECT * FROM UserMaster.dbo.Users;
+SELECT * FROM AuthDB.dbo.Users;
