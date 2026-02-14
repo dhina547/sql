@@ -348,23 +348,23 @@ def sql_compare():
         data['target_username'] = target_username
         data['target_password'] = target_password
         
-        data['target_server'] = target_server
-        data['target_database'] = target_database
-        data['target_port'] = target_port
-        data['target_username'] = target_username
-        
         # Process reconciliation
         result = ReconciliationController.process_reconciliation_direct(data)
         
         if not result.get('success'):
             status_code = result.get('status_code', 500)
-            return safe_jsonify({"error": result['error']}, status_code)
+            return safe_jsonify({
+                "success": False,
+                "error": result.get('error', 'Unknown error')
+            }, status_code)
         
         return safe_jsonify(result)
         
     except Exception as e:
-        return safe_jsonify({"error": f"Server error: {str(e)}"}, 500)
-        return safe_jsonify({"error": f"Server error: {str(e)}"}, 500)
+        return safe_jsonify({
+            "success": False,
+            "error": f"Server error: {str(e)}"
+        }, 500)
 
 
 @m2_bp.route('/api/m2/export/<reconciliation_id>/<export_type>', methods=['GET'])

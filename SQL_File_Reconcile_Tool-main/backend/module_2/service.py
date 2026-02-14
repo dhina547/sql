@@ -97,6 +97,8 @@ class ReconciliationService:
             ReconciliationService: Configured service instance
         """
         instance = cls(
+            source_db=source_database,
+            target_db=target_database,
             source_query=source_query,
             target_query=target_query,
             source_key=source_key,

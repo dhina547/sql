@@ -63,6 +63,12 @@ def compare_dataframes(source_df, target_df, source_alias='Source', target_alias
     src = source_df.copy()
     tgt = target_df.copy()
     
+    # Validate that COMMON_KEY exists in both DataFrames
+    if COMMON_KEY not in src.columns:
+        raise ValueError(f"Source DataFrame missing '{COMMON_KEY}' column. Keys must be normalized first.")
+    if COMMON_KEY not in tgt.columns:
+        raise ValueError(f"Target DataFrame missing '{COMMON_KEY}' column. Keys must be normalized first.")
+    
     # Add suffixes to distinguish source/target columns
     src_cols = {col: f"{col}_{source_alias}" for col in src.columns if col != COMMON_KEY}
     tgt_cols = {col: f"{col}_{target_alias}" for col in tgt.columns if col != COMMON_KEY}
@@ -183,8 +189,13 @@ def build_comparison_table(comparison_result, source_alias='Source', target_alia
         
         rows.append(row_dict)
     
-    # Add missing in target
+    # Add missing in target (only if key is valid, not a NULL key)
     for idx, row in comparison_result['missing_in_target'].iterrows():
+        key = str(row[COMMON_KEY])
+        # Skip NULL key rows - they will be handled separately
+        if key.startswith('__NULL_KEY_'):
+            continue
+            
         row_dict = {
             COMMON_KEY: row[COMMON_KEY],
             '__STATUS__': 'MissingInTarget'
@@ -194,8 +205,13 @@ def build_comparison_table(comparison_result, source_alias='Source', target_alia
                 row_dict[col] = row[col]
         rows.append(row_dict)
     
-    # Add missing in source
+    # Add missing in source (only if key is valid, not a NULL key)
     for idx, row in comparison_result['missing_in_source'].iterrows():
+        key = str(row[COMMON_KEY])
+        # Skip NULL key rows - they will be handled separately
+        if key.startswith('__NULL_KEY_'):
+            continue
+            
         row_dict = {
             COMMON_KEY: row[COMMON_KEY],
             '__STATUS__': 'MissingInSource'
@@ -204,6 +220,32 @@ def build_comparison_table(comparison_result, source_alias='Source', target_alia
             if col not in ('_merge_indicator', '__COMMON_KEY__'):
                 row_dict[col] = row[col]
         rows.append(row_dict)
+    
+    # Add NULL key rows separately with proper status
+    # These are rows with no valid key - they cannot be matched
+    for idx, row in comparison_result['missing_in_target'].iterrows():
+        key = str(row[COMMON_KEY])
+        if key.startswith('__NULL_KEY_'):
+            row_dict = {
+                COMMON_KEY: '[NULL KEY]',  # Display as NULL KEY for clarity
+                '__STATUS__': 'MissingInTarget'
+            }
+            for col in row.index:
+                if col not in ('_merge_indicator', '__COMMON_KEY__'):
+                    row_dict[col] = row[col]
+            rows.append(row_dict)
+    
+    for idx, row in comparison_result['missing_in_source'].iterrows():
+        key = str(row[COMMON_KEY])
+        if key.startswith('__NULL_KEY_'):
+            row_dict = {
+                COMMON_KEY: '[NULL KEY]',  # Display as NULL KEY for clarity
+                '__STATUS__': 'MissingInSource'
+            }
+            for col in row.index:
+                if col not in ('_merge_indicator', '__COMMON_KEY__'):
+                    row_dict[col] = row[col]
+            rows.append(row_dict)
     
     result_df = pd.DataFrame(rows)
     return result_df if len(result_df) > 0 else pd.DataFrame({COMMON_KEY: [], '__STATUS__': []})

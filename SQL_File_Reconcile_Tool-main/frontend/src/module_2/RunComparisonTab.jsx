@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+﻿import React, { useState, useEffect } from "react";
 import axios from "axios";
 import { useConsole } from "../common_Resources/ConsoleContext";
 import {
@@ -21,28 +21,24 @@ const RunComparisonTab = ({ m2State, m2Connections, onReset }) => {
   const [allData, setAllData] = useState([]);
   const [columns, setColumns] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [loadingResults, setLoadingResults] = useState(false);
-  const [collapsed, setCollapsed] = useState({
-    matched: true,
-    mismatched: false,
-    missing: false,
-  });
   const [exporting, setExporting] = useState(null);
+  const [viewMode, setViewMode] = useState("table"); // "table" or "detail"
 
   // --- Run Comparison ---
   const handleRun = async () => {
     setLoading(true);
-    log("───── Running SQL-to-SQL Comparison ─────", "header");
+    log(
+      "â”€â”€â”€â”€â”€ Running SQL-to-SQL Comparison â”€â”€â”€â”€â”€",
+      "header",
+    );
 
     try {
-      // Updated payload for dual connection approach
-      // No longer sends env names, instead comparison happens via connection types
       const payload = {
         source_query: m2State.source_query,
         target_query: m2State.target_query,
         source_key: m2State.source_key,
         target_key: m2State.target_key,
-        use_connections: true, // Flag to indicate we're using dual connections
+        use_connections: true,
       };
 
       const sourceServer =
@@ -54,9 +50,9 @@ const RunComparisonTab = ({ m2State, m2Connections, onReset }) => {
         m2Connections?.target?.server ||
         "Target";
 
-      log(`Comparing: ${sourceServer} ↔ ${targetServer}`, "info");
+      log(`Comparing: ${sourceServer} â†” ${targetServer}`, "info");
       log(
-        `Primary Keys: ${m2State.source_key} → ${m2State.target_key}`,
+        `Primary Keys: ${m2State.source_key} â†’ ${m2State.target_key}`,
         "info",
       );
 
@@ -74,7 +70,9 @@ const RunComparisonTab = ({ m2State, m2Connections, onReset }) => {
 
       if (result.table_data && result.table_data.length > 0) {
         setColumns(
-          Object.keys(result.table_data[0]).filter((k) => k !== "__STATUS__"),
+          Object.keys(result.table_data[0]).filter(
+            (k) => k !== "__STATUS__" && k !== "__COMMON_KEY__",
+          ),
         );
       }
 
@@ -83,7 +81,6 @@ const RunComparisonTab = ({ m2State, m2Connections, onReset }) => {
         "success",
       );
 
-      // Log summary
       const {
         matched,
         missing_in_source,
@@ -106,6 +103,172 @@ const RunComparisonTab = ({ m2State, m2Connections, onReset }) => {
     } finally {
       setLoading(false);
     }
+  };
+
+  // --- Render Table View (Excel-like with Highlighting) ---
+  const renderTableView = () => {
+    if (!allData || allData.length === 0) return null;
+
+    // Get base column names (without _Source or _Target suffix)
+    const baseColNames = [];
+    const colSet = new Set();
+    columns.forEach((col) => {
+      if (col.endsWith("_Source")) {
+        const baseName = col.replace("_Source", "");
+        colSet.add(baseName);
+      }
+    });
+    colSet.forEach((col) => baseColNames.push(col));
+
+    return (
+      <div className="flex-1 overflow-auto bg-white rounded-lg border border-gray-300">
+        <table className="w-full border-collapse text-xs">
+          <thead className="sticky top-0 bg-gray-100 border-b-2 border-gray-400">
+            <tr>
+              <th className="border border-gray-300 px-3 py-2 font-bold text-left bg-gray-200 w-24">
+                Status
+              </th>
+              <th className="border border-gray-300 px-3 py-2 font-bold text-left bg-gray-200 w-32">
+                Key
+              </th>
+              {baseColNames.map((colName) => (
+                <th
+                  key={colName}
+                  className="border border-gray-300 px-3 py-2 font-bold text-left bg-gray-200 min-w-48"
+                >
+                  {colName}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {allData.map((row, idx) => {
+              const status = row.__STATUS__;
+              const key = row.__COMMON_KEY__;
+
+              // Status styling
+              const statusStyles = {
+                Matched: "bg-green-100 border-green-300",
+                Mismatched: "bg-red-100 border-red-300",
+                MissingInTarget: "bg-yellow-100 border-yellow-300",
+                MissingInSource: "bg-yellow-100 border-yellow-300",
+              };
+
+              const statusBadge = {
+                Matched: "✓ Matched",
+                Mismatched: "✗ Mismatch",
+                MissingInTarget: "⚠ Missing Target",
+                MissingInSource: "⚠ Missing Source",
+              };
+
+              const rowBgClass = statusStyles[status] || "bg-white";
+
+              return (
+                <tr
+                  key={idx}
+                  className={`border-b border-gray-300 hover:bg-gray-50`}
+                >
+                  {/* Status Column */}
+                  <td
+                    className={`border border-gray-300 px-3 py-2 font-bold ${rowBgClass}`}
+                  >
+                    <span className="whitespace-nowrap">
+                      {statusBadge[status]}
+                    </span>
+                  </td>
+
+                  {/* Key Column */}
+                  <td
+                    className={`border border-gray-300 px-3 py-2 font-mono ${rowBgClass}`}
+                  >
+                    {String(key).includes("NULL") ? (
+                      <span className="text-red-600 font-bold italic">
+                        ∅ {key}
+                      </span>
+                    ) : (
+                      key
+                    )}
+                  </td>
+
+                  {/* Data Columns */}
+                  {baseColNames.map((colName) => {
+                    const sourceCol = `${colName}_Source`;
+                    const targetCol = `${colName}_Target`;
+                    const sourceVal = row[sourceCol];
+                    const targetVal = row[targetCol];
+
+                    // Determine if values mismatch
+                    const isMismatch =
+                      status === "Mismatched" &&
+                      sourceVal !== "" &&
+                      sourceVal !== null &&
+                      targetVal !== "" &&
+                      targetVal !== null &&
+                      String(sourceVal) !== String(targetVal);
+
+                    // Determine background color
+                    let cellBg = "bg-white";
+                    if (isMismatch) {
+                      cellBg = "bg-red-300";
+                    } else if (status === "MissingInTarget") {
+                      cellBg = "bg-yellow-50";
+                    } else if (status === "MissingInSource") {
+                      cellBg = "bg-yellow-50";
+                    }
+
+                    return (
+                      <td
+                        key={sourceCol}
+                        className={`border border-gray-300 px-3 py-2 ${cellBg} ${
+                          isMismatch ? "font-bold text-white" : ""
+                        }`}
+                      >
+                        <div className="flex gap-1">
+                          <div className="flex-1">
+                            <div className="text-xs text-gray-500 font-semibold">
+                              Source:
+                            </div>
+                            <div
+                              className={
+                                isMismatch ? "text-white font-bold" : ""
+                              }
+                            >
+                              {sourceVal !== null && sourceVal !== ""
+                                ? sourceVal
+                                : "—"}
+                            </div>
+                          </div>
+                          {(status === "Mismatched" ||
+                            status === "MissingInSource") && (
+                            <>
+                              <div className="border-l-2 border-gray-400 mx-1"></div>
+                              <div className="flex-1">
+                                <div className="text-xs text-gray-500 font-semibold">
+                                  Target:
+                                </div>
+                                <div
+                                  className={
+                                    isMismatch ? "text-white font-bold" : ""
+                                  }
+                                >
+                                  {targetVal !== null && targetVal !== ""
+                                    ? targetVal
+                                    : "—"}
+                                </div>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    );
   };
 
   // --- Export Handlers ---
@@ -134,82 +297,151 @@ const RunComparisonTab = ({ m2State, m2Connections, onReset }) => {
     }
   };
 
-  // --- Data Filtering ---
-  const matched = allData.filter((r) => r.__STATUS__ === "Matched");
-  const mismatched = allData.filter((r) => r.__STATUS__ === "Mismatched");
-  const missing_in_target = allData.filter(
-    (r) => r.__STATUS__ === "MissingInTarget",
-  );
-  const missing_in_source = allData.filter(
-    (r) => r.__STATUS__ === "MissingInSource",
-  );
+  // --- Render Side-by-Side Comparison Tables ---
+  const renderComparison = () => {
+    if (!allData || allData.length === 0) return null;
 
-  const renderTable = (rows, label, iconColor) => {
-    if (rows.length === 0) {
-      return <p className="text-xs text-gray-400 italic px-3 py-2">None</p>;
-    }
+    // Get base column names (without _Source or _Target suffix)
+    const baseColNames = new Set();
+    columns.forEach((col) => {
+      if (col.endsWith("_Source")) {
+        baseColNames.add(col.replace("_Source", ""));
+      }
+    });
 
     return (
-      <div className="overflow-x-auto">
-        <table className="min-w-full text-[10px] text-left whitespace-nowrap">
-          <thead className="bg-brand-900 text-white sticky top-0 z-10 font-bold">
-            <tr>
-              <th className="px-2 py-1 border-r border-slate-600 w-12">
-                Status
-              </th>
-              {columns.slice(0, 10).map((col) => (
-                <th
-                  key={col}
-                  className="px-2 py-1 border-r border-slate-600 max-w-xs"
-                >
-                  {col}
-                </th>
-              ))}
-              {columns.length > 10 && (
-                <th className="px-2 py-1 text-gray-300">
-                  +{columns.length - 10} more
-                </th>
-              )}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.slice(0, 100).map((row, idx) => (
-              <tr
-                key={idx}
-                className={`border-b border-gray-200 hover:bg-gray-50 ${
-                  row.__STATUS__ === "Matched"
-                    ? "bg-green-50"
-                    : row.__STATUS__ === "Mismatched"
-                      ? "bg-red-50"
-                      : "bg-yellow-50"
-                }`}
-              >
-                <td className="px-2 py-1 font-bold text-[9px]">
-                  {row.__STATUS__?.charAt(0)}
-                </td>
-                {columns.slice(0, 10).map((col) => (
-                  <td
-                    key={`${idx}-${col}`}
-                    className="px-2 py-1 text-gray-700 max-w-xs truncate"
-                  >
-                    {String(row[col] ?? "")}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {rows.length > 100 && (
-          <p className="text-xs text-gray-400 italic px-3 py-2">
-            Showing 100 of {rows.length} records
-          </p>
-        )}
+      <div className="space-y-3 overflow-y-auto pr-2">
+        {allData.map((row, idx) => {
+          const status = row.__STATUS__;
+          const key = row.__COMMON_KEY__;
+
+          const statusConfig = {
+            Matched: {
+              border: "border-green-400",
+              bg: "bg-green-50",
+              label: "âœ“ Matched",
+              textColor: "text-green-900",
+            },
+            Mismatched: {
+              border: "border-red-400",
+              bg: "bg-red-50",
+              label: "âœ— Mismatched",
+              textColor: "text-red-900",
+            },
+            MissingInTarget: {
+              border: "border-yellow-400",
+              bg: "bg-yellow-50",
+              label: "âš  Missing in Target",
+              textColor: "text-yellow-900",
+            },
+            MissingInSource: {
+              border: "border-yellow-400",
+              bg: "bg-yellow-50",
+              label: "âš  Missing in Source",
+              textColor: "text-yellow-900",
+            },
+          };
+
+          const config = statusConfig[status] || statusConfig.Matched;
+
+          return (
+            <div
+              key={idx}
+              className={`border-2 ${config.border} ${config.bg} rounded-lg p-3`}
+            >
+              {/* Header */}
+              <div className={`text-xs font-bold ${config.textColor} mb-2`}>
+                {config.label} - Key: <span className="font-mono">{key}</span>
+              </div>
+
+              {/* Two Column Layout */}
+              <div className="grid grid-cols-2 gap-4">
+                {/* Source Column */}
+                <div className="bg-white bg-opacity-60 rounded p-2 border border-blue-200">
+                  <div className="text-xs font-bold bg-blue-100 text-blue-900 px-2 py-1 rounded mb-2">
+                    Source Database
+                  </div>
+                  <div className="space-y-2 text-xs">
+                    {Array.from(baseColNames).map((colName) => {
+                      const sourceCol = `${colName}_Source`;
+                      const targetCol = `${colName}_Target`;
+                      const sourceVal = row[sourceCol];
+                      const targetVal = row[targetCol];
+
+                      // Determine if this cell should be highlighted
+                      const isMismatch =
+                        status === "Mismatched" &&
+                        sourceVal !== "" &&
+                        sourceVal !== null &&
+                        targetVal !== "" &&
+                        targetVal !== null &&
+                        String(sourceVal) !== String(targetVal);
+
+                      return (
+                        <div
+                          key={sourceCol}
+                          className={`px-2 py-1 rounded ${
+                            isMismatch
+                              ? "bg-red-400 text-white font-bold"
+                              : "bg-gray-100"
+                          }`}
+                        >
+                          <span className="font-bold">{colName}:</span>{" "}
+                          {sourceVal !== null && sourceVal !== ""
+                            ? sourceVal
+                            : "-"}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Target Column */}
+                <div className="bg-white bg-opacity-60 rounded p-2 border border-purple-200">
+                  <div className="text-xs font-bold bg-purple-100 text-purple-900 px-2 py-1 rounded mb-2">
+                    Target Database
+                  </div>
+                  <div className="space-y-2 text-xs">
+                    {Array.from(baseColNames).map((colName) => {
+                      const sourceCol = `${colName}_Source`;
+                      const targetCol = `${colName}_Target`;
+                      const sourceVal = row[sourceCol];
+                      const targetVal = row[targetCol];
+
+                      // Determine if this cell should be highlighted
+                      const isMismatch =
+                        status === "Mismatched" &&
+                        sourceVal !== "" &&
+                        sourceVal !== null &&
+                        targetVal !== "" &&
+                        targetVal !== null &&
+                        String(sourceVal) !== String(targetVal);
+
+                      return (
+                        <div
+                          key={targetCol}
+                          className={`px-2 py-1 rounded ${
+                            isMismatch
+                              ? "bg-red-400 text-white font-bold"
+                              : "bg-gray-100"
+                          }`}
+                        >
+                          <span className="font-bold">{colName}:</span>{" "}
+                          {targetVal !== null && targetVal !== ""
+                            ? targetVal
+                            : "-"}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
     );
   };
-
-  const toggle = (key) =>
-    setCollapsed((prev) => ({ ...prev, [key]: !prev[key] }));
 
   return (
     <div className="h-full flex flex-col p-4 gap-4 overflow-auto">
@@ -240,8 +472,8 @@ const RunComparisonTab = ({ m2State, m2Connections, onReset }) => {
         </div>
       ) : (
         <>
-          {/* Summary Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          {/* Summary Metrics - Compact */}
+          <div className="grid grid-cols-4 gap-2">
             <div className="bg-blue-50 border border-blue-200 rounded p-2">
               <p className="text-xs text-gray-600">Total Source</p>
               <p className="font-bold text-lg text-blue-700">
@@ -260,212 +492,107 @@ const RunComparisonTab = ({ m2State, m2Connections, onReset }) => {
                 {summary.matched}
               </p>
             </div>
-            <div
-              className={`${summary.total_discrepancies > 0 ? "bg-red-50 border-red-200" : "bg-green-50 border-green-200"} border rounded p-2`}
-            >
+            <div className="bg-red-50 border border-red-200 rounded p-2">
               <p className="text-xs text-gray-600">Discrepancies</p>
-              <p
-                className={`font-bold text-lg ${summary.total_discrepancies > 0 ? "text-red-700" : "text-green-700"}`}
-              >
+              <p className="font-bold text-lg text-red-700">
                 {summary.total_discrepancies}
               </p>
             </div>
           </div>
 
-          {/* Status & Metrics */}
-          <div
-            className={`rounded-lg p-3 border ${
-              summary.status === "PERFECT"
-                ? "bg-green-50 border-green-300"
-                : summary.status === "CLEAN"
-                  ? "bg-green-50 border-green-200"
-                  : summary.status === "WARNINGS"
-                    ? "bg-yellow-50 border-yellow-300"
-                    : "bg-red-50 border-red-300"
-            }`}
-          >
-            <div className="flex items-center gap-2 mb-1">
-              <CheckCircle2
-                className={`w-4 h-4 ${
-                  summary.status === "PERFECT" || summary.status === "CLEAN"
-                    ? "text-green-600"
-                    : summary.status === "WARNINGS"
-                      ? "text-yellow-600"
-                      : "text-red-600"
-                }`}
-              />
-              <span className="font-bold text-sm">{summary.status}</span>
-            </div>
-            <div className="grid grid-cols-3 gap-2 text-xs">
-              <div>
-                Missing in Target:{" "}
-                <span className="font-bold">{summary.missing_in_target}</span>
-              </div>
-              <div>
-                Missing in Source:{" "}
-                <span className="font-bold">{summary.missing_in_source}</span>
-              </div>
-              <div>
-                Column Mismatches:{" "}
-                <span className="font-bold">{summary.column_mismatches}</span>
-              </div>
-            </div>
-            <div className="mt-2 text-xs">
-              Reconciliation Rate:{" "}
-              <span className="font-bold text-green-700">
-                {summary.reconciliation_rate}%
-              </span>{" "}
-              | Discrepancy Rate:{" "}
-              <span className="font-bold text-red-700">
-                {summary.discrepancy_rate}%
-              </span>
-            </div>
-          </div>
-
-          {/* Recommendations */}
-          {summary.recommendations && summary.recommendations.length > 0 && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-2">
-              <p className="text-xs font-bold text-blue-800 mb-1">
-                Recommendations:
+          {/* NULL Key Information */}
+          {(summary.null_key_source > 0 || summary.null_key_target > 0) && (
+            <div className="bg-orange-50 border-l-4 border-orange-400 p-3 rounded">
+              <p className="text-sm font-bold text-orange-900 mb-2">
+                ⚠ Records with NULL or Empty Primary Keys
               </p>
-              <ul className="space-y-0.5">
-                {summary.recommendations.map((rec, idx) => (
-                  <li key={idx} className="text-xs text-blue-700">
-                    {rec}
-                  </li>
-                ))}
-              </ul>
+              <p className="text-xs text-orange-800">
+                {summary.null_key_source > 0 && (
+                  <span>
+                    {summary.null_key_source} source records have NULL keys
+                    •{" "}
+                  </span>
+                )}
+                {summary.null_key_target > 0 && (
+                  <span>
+                    {summary.null_key_target} target records have NULL keys
+                  </span>
+                )}
+              </p>
+              <p className="text-xs text-orange-700 mt-1 italic">
+                These records cannot be matched and are marked as missing.
+                Consider validating your primary key column.
+              </p>
             </div>
           )}
 
-          {/* Results Tables */}
-          <div className="flex-1 flex flex-col gap-2 min-h-0 overflow-auto">
-            {/* Matched */}
-            <div className="border rounded-lg overflow-hidden">
-              <button
-                onClick={() => toggle("matched")}
-                className="w-full bg-green-100 hover:bg-green-200 text-green-900 px-3 py-2 text-left font-bold text-xs flex items-center justify-between transition-colors"
-              >
-                <span>✓ Matched ({matched.length})</span>
-                {collapsed.matched ? (
-                  <ChevronDown size={16} />
-                ) : (
-                  <ChevronUp size={16} />
-                )}
-              </button>
-              {!collapsed.matched && (
-                <div className="max-h-48 overflow-auto bg-white">
-                  {renderTable(matched, "Matched", "green")}
-                </div>
-              )}
-            </div>
+          {/* View Mode Tabs */}
+          <div className="flex gap-2 items-center">
+            <button
+              onClick={() => setViewMode("table")}
+              className={`px-4 py-2 rounded text-sm font-bold transition-colors ${
+                viewMode === "table"
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+              }`}
+            >
+              📊 Table View
+            </button>
+            <button
+              onClick={() => setViewMode("detail")}
+              className={`px-4 py-2 rounded text-sm font-bold transition-colors ${
+                viewMode === "detail"
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+              }`}
+            >
+              📋 Detail View
+            </button>
+            <p className="text-xs text-gray-600 ml-auto">
+              Red = Mismatched Values | Yellow = Missing Records
+            </p>
+          </div>
 
-            {/* Mismatched */}
-            {mismatched.length > 0 && (
-              <div className="border rounded-lg overflow-hidden">
-                <button
-                  onClick={() => toggle("mismatched")}
-                  className="w-full bg-red-100 hover:bg-red-200 text-red-900 px-3 py-2 text-left font-bold text-xs flex items-center justify-between transition-colors"
-                >
-                  <span>✗ Mismatched ({mismatched.length})</span>
-                  {collapsed.mismatched ? (
-                    <ChevronDown size={16} />
-                  ) : (
-                    <ChevronUp size={16} />
-                  )}
-                </button>
-                {!collapsed.mismatched && (
-                  <div className="max-h-48 overflow-auto bg-white">
-                    {renderTable(mismatched, "Mismatched", "red")}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Missing in Target */}
-            {missing_in_target.length > 0 && (
-              <div className="border rounded-lg overflow-hidden">
-                <button
-                  onClick={() => toggle("missing")}
-                  className="w-full bg-yellow-100 hover:bg-yellow-200 text-yellow-900 px-3 py-2 text-left font-bold text-xs flex items-center justify-between transition-colors"
-                >
-                  <span>⚠ Missing in Target ({missing_in_target.length})</span>
-                  {collapsed.missing ? (
-                    <ChevronDown size={16} />
-                  ) : (
-                    <ChevronUp size={16} />
-                  )}
-                </button>
-                {!collapsed.missing && (
-                  <div className="max-h-48 overflow-auto bg-white">
-                    {renderTable(
-                      missing_in_target,
-                      "Missing in Target",
-                      "yellow",
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Missing in Source */}
-            {missing_in_source.length > 0 && (
-              <div className="border rounded-lg overflow-hidden">
-                <button
-                  onClick={() => toggle("missing")}
-                  className="w-full bg-yellow-100 hover:bg-yellow-200 text-yellow-900 px-3 py-2 text-left font-bold text-xs flex items-center justify-between transition-colors"
-                >
-                  <span>⚠ Missing in Source ({missing_in_source.length})</span>
-                  {collapsed.missing ? (
-                    <ChevronDown size={16} />
-                  ) : (
-                    <ChevronUp size={16} />
-                  )}
-                </button>
-                {!collapsed.missing && (
-                  <div className="max-h-48 overflow-auto bg-white">
-                    {renderTable(
-                      missing_in_source,
-                      "Missing in Source",
-                      "yellow",
-                    )}
-                  </div>
-                )}
-              </div>
+          {/* Comparison View */}
+          <div className="flex-1 flex flex-col gap-2 min-h-0 overflow-hidden">
+            {viewMode === "table" ? (
+              <div className="flex-1 overflow-y-auto">{renderTableView()}</div>
+            ) : (
+              <div className="flex-1 overflow-y-auto">{renderComparison()}</div>
             )}
           </div>
 
-          {/* Export & Reset Buttons */}
-          <div className="flex gap-2 flex-wrap">
+          {/* Action Buttons */}
+          <div className="flex gap-2 pt-2 flex-wrap">
             <button
               onClick={() => handleExport("full")}
               disabled={exporting === "full"}
-              className="bg-blue-600 hover:bg-blue-800 disabled:bg-gray-300 text-white px-3 py-1.5 rounded text-xs font-bold flex items-center gap-1 transition-colors"
+              className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white px-4 py-2 rounded text-sm font-bold flex items-center gap-2 transition-colors"
             >
-              <Download className="w-3 h-3" />
+              <Download className="w-4 h-4" />
               {exporting === "full" ? "Exporting..." : "Full CSV"}
             </button>
             <button
               onClick={() => handleExport("mismatches")}
               disabled={exporting === "mismatches"}
-              className="bg-blue-600 hover:bg-blue-800 disabled:bg-gray-300 text-white px-3 py-1.5 rounded text-xs font-bold flex items-center gap-1 transition-colors"
+              className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white px-4 py-2 rounded text-sm font-bold flex items-center gap-2 transition-colors"
             >
-              <Download className="w-3 h-3" />
+              <Download className="w-4 h-4" />
               {exporting === "mismatches" ? "Exporting..." : "Mismatches CSV"}
             </button>
             <button
               onClick={() => handleExport("detail")}
               disabled={exporting === "detail"}
-              className="bg-blue-600 hover:bg-blue-800 disabled:bg-gray-300 text-white px-3 py-1.5 rounded text-xs font-bold flex items-center gap-1 transition-colors"
+              className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white px-4 py-2 rounded text-sm font-bold flex items-center gap-2 transition-colors"
             >
-              <Download className="w-3 h-3" />
+              <Download className="w-4 h-4" />
               {exporting === "detail" ? "Exporting..." : "Detail CSV"}
             </button>
             <button
               onClick={onReset}
-              className="ml-auto bg-gray-600 hover:bg-gray-800 text-white px-3 py-1.5 rounded text-xs font-bold flex items-center gap-1 transition-colors"
+              className="ml-auto bg-gray-400 hover:bg-gray-500 text-white px-4 py-2 rounded text-sm font-bold flex items-center gap-2 transition-colors"
             >
-              <RotateCcw className="w-3 h-3" />
+              <RotateCcw className="w-4 h-4" />
               Reset
             </button>
           </div>

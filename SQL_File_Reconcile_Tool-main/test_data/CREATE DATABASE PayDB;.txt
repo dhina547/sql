@@ -117,8 +117,8 @@ GO
 
 🔍 6️⃣ VERIFICATION QUERIES (RUN AFTER INSERT)
 Check data in each DB
-SELECT * FROM PayDB.dbo.Transactions;
-SELECT * FROM RiskDB.dbo.Transactions;
+SELECT * FROM RiskDB.dbo.Transactions;SELECT * FROM PayDB.dbo.Transactions;
+
 SELECT * FROM ReconcileLab.dbo.Transactions;
 
 SELECT * FROM UserMaster.dbo.Users;

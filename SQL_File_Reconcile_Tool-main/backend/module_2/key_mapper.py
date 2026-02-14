@@ -54,6 +54,11 @@ def normalize_dataframe_keys(df, old_key_name, new_key_name="__COMMON_KEY__"):
         
     Raises:
         ValueError: If key column not found
+        
+    Note:
+        Rows with NULL/empty keys are assigned unique identifiers (NULL_KEY_0, NULL_KEY_1, etc.)
+        to prevent them from incorrectly matching each other during merge operations.
+        Numeric keys are normalized (1750.0 → 1750) for consistent matching.
     """
     df_copy = df.copy()
     
@@ -70,9 +75,35 @@ def normalize_dataframe_keys(df, old_key_name, new_key_name="__COMMON_KEY__"):
     # Rename the column
     df_copy = df_copy.rename(columns={actual_col: new_key_name})
     
-    # Normalize key values: convert to string, trim whitespace, convert nulls to empty string
-    df_copy[new_key_name] = df_copy[new_key_name].astype(str).str.strip()
-    df_copy[new_key_name] = df_copy[new_key_name].replace(['None', 'nan', 'NaT', 'NaN', '<NA>', ''], '')
+    # Normalize key values: convert to string & handle nulls
+    processed_keys = []
+    null_indices = []
+    
+    for i, val in enumerate(df_copy[new_key_name]):
+        # Check if null/empty
+        if val is None or pd.isna(val):
+            null_indices.append(i)
+            processed_keys.append(f"__NULL_KEY_{len(null_indices)-1}__")
+        else:
+            str_val = str(val).strip()
+            
+            # Check if string representation is null-like
+            if str_val in ('None', 'nan', 'NaT', 'NaN', '<NA>', ''):
+                null_indices.append(i)
+                processed_keys.append(f"__NULL_KEY_{len(null_indices)-1}__")
+            else:
+                # Normalize numeric values (1750.0 → 1750)
+                try:
+                    float_val = float(str_val)
+                    if float_val == int(float_val):
+                        processed_keys.append(str(int(float_val)))
+                    else:
+                        processed_keys.append(f"{float_val:g}")
+                except (ValueError, OverflowError):
+                    # Not numeric, keep as-is
+                    processed_keys.append(str_val)
+    
+    df_copy[new_key_name] = processed_keys
     
     return df_copy
 

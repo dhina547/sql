@@ -25,12 +25,20 @@ def generate_summary(comparison_result, source_df, target_df):
             - column_mismatches: Count of rows with column-level differences
             - reconciliation_rate: Percentage of matched rows
             - discrepancy_rate: Percentage of mismatched rows
+            - null_key_source: Count of rows with NULL keys in source
+            - null_key_target: Count of rows with NULL keys in target
     """
     
     matched_count = len(comparison_result['matched'])
     missing_in_tgt_count = len(comparison_result['missing_in_target'])
     missing_in_src_count = len(comparison_result['missing_in_source'])
     mismatch_count = len(comparison_result['column_mismatch_rows'])
+    
+    # Count NULL key rows (these are unmatched rows with NULL keys)
+    null_key_source = sum(1 for idx, row in comparison_result['missing_in_target'].iterrows() 
+                          if str(row.get('__COMMON_KEY__', '')).startswith('__NULL_KEY_'))
+    null_key_target = sum(1 for idx, row in comparison_result['missing_in_source'].iterrows() 
+                          if str(row.get('__COMMON_KEY__', '')).startswith('__NULL_KEY_'))
     
     total_source = len(source_df)
     total_target = len(target_df)
@@ -55,6 +63,8 @@ def generate_summary(comparison_result, source_df, target_df):
         'total_discrepancies': int(missing_in_tgt_count + missing_in_src_count + mismatch_count),
         'reconciliation_rate': round(reconciliation_rate, 2),
         'discrepancy_rate': round(discrepancy_rate, 2),
+        'null_key_source': int(null_key_source),
+        'null_key_target': int(null_key_target),
         'status': determine_reconciliation_status(matched_count, total_comparable)
     }
     
@@ -156,11 +166,21 @@ def generate_recommendations(summary):
     elif status == 'CRITICAL':
         recommendations.append('✗ Critical data mismatch. Data integrity may be at risk. Investigate immediately.')
     
+    if summary.get('null_key_source', 0) > 0:
+        recommendations.append(f"ℹ {summary['null_key_source']} rows in source have NULL/empty keys - cannot be matched.")
+    
+    if summary.get('null_key_target', 0) > 0:
+        recommendations.append(f"ℹ {summary['null_key_target']} rows in target have NULL/empty keys - cannot be matched.")
+    
     if summary.get('missing_in_target', 0) > 0:
-        recommendations.append(f"⚠ {summary['missing_in_target']} rows exist in source but not in target.")
+        actual_missing = summary['missing_in_target'] - summary.get('null_key_source', 0)
+        if actual_missing > 0:
+            recommendations.append(f"⚠ {actual_missing} rows exist in source but not in target.")
     
     if summary.get('missing_in_source', 0) > 0:
-        recommendations.append(f"⚠ {summary['missing_in_source']} rows exist in target but not in source.")
+        actual_missing = summary['missing_in_source'] - summary.get('null_key_target', 0)
+        if actual_missing > 0:
+            recommendations.append(f"⚠ {actual_missing} rows exist in target but not in source.")
     
     if summary.get('column_mismatches', 0) > 0:
         recommendations.append(f"⚠ {summary['column_mismatches']} rows have column-level mismatches.")

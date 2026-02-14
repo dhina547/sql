@@ -5,6 +5,7 @@ Manages validation, service orchestration, and response formatting.
 """
 
 import uuid
+import pandas as pd
 from .service import ReconciliationService
 from common.storage_manager import save_df, load_df, RESULTS_DIR
 from common.json_utils import sanitize_df_for_json
@@ -97,12 +98,17 @@ class ReconciliationController:
                 result
             )
             
+            # Sanitize table_data for JSON serialization (handles NaN → null)
+            sanitized_table_data = sanitize_df_for_json(
+                pd.DataFrame(result['table_data'])
+            ).to_dict(orient='records') if result['table_data'] else []
+            
             # Format response
             response = {
                 'success': True,
                 'reconciliation_id': reconciliation_id,
                 'summary': result['summary'],
-                'table_data': result['table_data'],
+                'table_data': sanitized_table_data,
                 'styling': result['styling'],
                 'record_count': result['record_count'],
                 'download_links': {
@@ -185,12 +191,17 @@ class ReconciliationController:
                 result
             )
             
+            # Sanitize table_data for JSON serialization (handles NaN → null)
+            sanitized_table_data = sanitize_df_for_json(
+                pd.DataFrame(result['table_data'])
+            ).to_dict(orient='records') if result['table_data'] else []
+            
             # Format response
             response = {
                 'success': True,
                 'reconciliation_id': reconciliation_id,
                 'summary': result['summary'],
-                'table_data': result['table_data'],
+                'table_data': sanitized_table_data,
                 'styling': result['styling'],
                 'record_count': result['record_count'],
                 'download_links': {
